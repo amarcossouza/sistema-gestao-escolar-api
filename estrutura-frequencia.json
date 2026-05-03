@@ -1,0 +1,221 @@
+{
+  "projeto": "ERP Escolar API",
+  "stack": {
+    "framework": "Spring Boot 3.5.11",
+    "linguagem": "Java 17",
+    "banco_dados": "MySQL 8.0",
+    "porta": 8080,
+    "total_linhas_java": 2180
+  },
+  "banco_dados": {
+    "host": "134.209.164.87:3306",
+    "database": "droplexdb",
+    "driver": "MySQL Connector/J 8.0.33"
+  },
+  "arquivos_frequencia": {
+    "entities": {
+      "Frequencia.java": {
+        "caminho": "src/main/java/com/escola/api/entity/Frequencia.java",
+        "linhas": 48,
+        "tabela": "esc_frequencia",
+        "constraint_unica": ["id_aluno", "id_turma", "data"],
+        "campos": ["id", "aluno", "turma", "data", "status", "criadoEm"]
+      },
+      "Aluno.java": {
+        "caminho": "src/main/java/com/escola/api/entity/Aluno.java",
+        "linhas": 32,
+        "tabela": "esc_aluno",
+        "fetch_type": "EAGER"
+      },
+      "Turma.java": {
+        "caminho": "src/main/java/com/escola/api/entity/Turma.java",
+        "linhas": 38,
+        "tabela": "esc_turma"
+      },
+      "Ocorrencia.java": {
+        "caminho": "src/main/java/com/escola/api/entity/Ocorrencia.java",
+        "linhas": 79,
+        "tabela": "esc_ocorrencias"
+      },
+      "ChamadaConfirmada.java": {
+        "caminho": "src/main/java/com/escola/api/entity/ChamadaConfirmada.java",
+        "linhas": 41,
+        "tabela": "esc_chamada_confirmada"
+      }
+    },
+    "repositories": {
+      "FrequenciaRepository.java": {
+        "caminho": "src/main/java/com/escola/api/repository/FrequenciaRepository.java",
+        "linhas": 15,
+        "metodos_criticos": [
+          "findByAlunoAndTurmaAndData",
+          "findByTurmaAndDataBetween",
+          "findByTurmaIdAndDataBetween"
+        ]
+      },
+      "OcorrenciaRepository.java": {
+        "caminho": "src/main/java/com/escola/api/repository/OcorrenciaRepository.java",
+        "linhas": 26,
+        "metodo_otimizado": "countOcorrenciasByTurmaId",
+        "descricao": "Query com GROUP BY em uma única chamada"
+      },
+      "ChamadaConfirmadaRepository.java": {
+        "caminho": "src/main/java/com/escola/api/repository/ChamadaConfirmadaRepository.java",
+        "linhas": 12
+      },
+      "AlunoRepository.java": {
+        "caminho": "src/main/java/com/escola/api/repository/AlunoRepository.java",
+        "linhas": 12,
+        "metodos": ["findByTurma", "findByTurmaId"]
+      }
+    },
+    "services": {
+      "FrequenciaService.java": {
+        "caminho": "src/main/java/com/escola/api/service/FrequenciaService.java",
+        "linhas": 136,
+        "metodos_principais": [
+          "listarTodos",
+          "buscarPorId",
+          "salvar",
+          "deletar",
+          "buscarPorTurmaEPeriodo",
+          "salvarLote"
+        ],
+        "problemas": ["salvarLote executa loop", "findAll sem limite"]
+      },
+      "TurmaService.java": {
+        "caminho": "src/main/java/com/escola/api/service/TurmaService.java",
+        "linhas": 116,
+        "metodo_critico": "obterDadosCompletos",
+        "descricao": "Carrega alunos, frequências, ocorrências e chamadas em 4 queries otimizadas",
+        "queries": 4,
+        "tempo_esperado_ms": "200-500"
+      }
+    },
+    "controllers": {
+      "FrequenciaController.java": {
+        "caminho": "src/main/java/com/escola/api/controller/FrequenciaController.java",
+        "linhas": 101,
+        "endpoints": [
+          { "metodo": "GET", "path": "/frequencias", "descricao": "Listar ou filtrar" },
+          { "metodo": "GET", "path": "/frequencias/{id}", "descricao": "Buscar por ID" },
+          { "metodo": "POST", "path": "/frequencias", "descricao": "Salvar 1 frequência" },
+          { "metodo": "PUT", "path": "/frequencias/{id}", "descricao": "Atualizar" },
+          { "metodo": "DELETE", "path": "/frequencias/{id}", "descricao": "Deletar" },
+          { "metodo": "POST", "path": "/frequencias/salvar-lote", "descricao": "Salvar múltiplas (com loop)" }
+        ],
+        "query_params": ["turmaId", "dataInicio", "dataFim"]
+      },
+      "TurmaController.java": {
+        "caminho": "src/main/java/com/escola/api/controller/TurmaController.java",
+        "linhas": 106,
+        "endpoint_critico": {
+          "metodo": "GET",
+          "path": "/turmas/{id}/dados-completos",
+          "params": ["mes", "ano"],
+          "descricao": "Retorna FrequenciaCompleteResponseDTO com todos os dados do mês"
+        }
+      }
+    },
+    "dtos": {
+      "FrequenciaRequest.java": {
+        "caminho": "src/main/java/com/escola/api/dto/FrequenciaRequest.java",
+        "linhas": 51,
+        "campos": ["alunoId", "turmaId", "data", "status"],
+        "uso": "POST/PUT e salvar lote"
+      },
+      "FrequenciaCompleteResponseDTO.java": {
+        "caminho": "src/main/java/com/escola/api/dto/FrequenciaCompleteResponseDTO.java",
+        "linhas": 63,
+        "campos": ["alunos", "frequencias", "ocorrenciasCount", "chamadasConfirmadas"],
+        "uso": "Resposta do endpoint /turmas/{id}/dados-completos"
+      }
+    }
+  },
+  "configuracoes": {
+    "database_properties": {
+      "caminho": "src/main/resources/application.properties",
+      "linhas": 21,
+      "url": "jdbc:mysql://134.209.164.87:3306/droplexdb",
+      "ddl_auto": "none",
+      "show_sql": "false",
+      "open_in_view": "false"
+    },
+    "indices_performance": {
+      "caminho": "src/main/resources/indices_performance.sql",
+      "linhas": 47,
+      "indices": [
+        "idx_frequencia_turma_data",
+        "idx_frequencia_aluno_turma_data",
+        "idx_chamada_turma_data",
+        "idx_ocorrencia_aluno",
+        "idx_ocorrencia_turma_aluno",
+        "idx_aluno_turma"
+      ],
+      "status": "DEVE SER EXECUTADO MANUALMENTE",
+      "performance_ganho": {
+        "frequencias": "10x mais rápido",
+        "chamadas": "5x mais rápido",
+        "ocorrencias": "20x mais rápido"
+      }
+    },
+    "cors": {
+      "caminho": "src/main/java/com/escola/api/config/CorsConfig.java",
+      "linhas": 18,
+      "allowed_origins": [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174"
+      ]
+    }
+  },
+  "fluxo_carregamento_completo": {
+    "endpoint": "GET /turmas/{id}/dados-completos?mes=5&ano=2026",
+    "controller": "TurmaController.obterDadosCompletos()",
+    "service": "TurmaService.obterDadosCompletos()",
+    "queries": [
+      {
+        "numero": 1,
+        "metodo": "AlunoRepository.findByTurmaId()",
+        "indice": "idx_aluno_turma",
+        "performance": "Rápido"
+      },
+      {
+        "numero": 2,
+        "metodo": "FrequenciaRepository.findByTurmaIdAndDataBetween()",
+        "indice": "idx_frequencia_turma_data",
+        "performance": "Rápido"
+      },
+      {
+        "numero": 3,
+        "metodo": "ChamadaConfirmadaRepository.findByTurmaIdAndDataChamadaBetween()",
+        "indice": "idx_chamada_turma_data",
+        "performance": "Rápido"
+      },
+      {
+        "numero": 4,
+        "metodo": "OcorrenciaRepository.countOcorrenciasByTurmaId()",
+        "tipo": "Query customizada com GROUP BY",
+        "performance": "Muito rápido (1 query em vez de N+1)"
+      }
+    ],
+    "total_queries": 4,
+    "tempo_esperado_ms": "200-500",
+    "response_dto": "FrequenciaCompleteResponseDTO"
+  },
+  "checklist_otimizacao": {
+    "implementado": [
+      "Índices em esc_frequencia (turma_id, data)",
+      "Índices em esc_ocorrencia (turma_id, aluno_id)",
+      "Índices em esc_chamada_confirmada (turma_id, data_chamada)",
+      "Query otimizada para contagem (GROUP BY em 1 query)",
+      "Aluno com FetchType.EAGER"
+    ],
+    "nao_implementado": [
+      "Caching em obterDadosCompletos()",
+      "Batch processing em salvarLote()",
+      "Paginação em listarTodos()"
+    ]
+  }
+}

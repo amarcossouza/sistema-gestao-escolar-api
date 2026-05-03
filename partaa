@@ -1,0 +1,100 @@
+import React, { useState, useEffect } from 'react';
+import { Container, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Box, Typography } from '@mui/material';
+import LockIcon from '@mui/icons-material/Lock';
+interface Aluno { id: number; nome: string; }
+interface FrequenciaAPI { alunoId: number; dia: number; status: string; }
+interface FrequenciaData { [alunoId: number]: { [dia: number]: string; }; }
+interface Turma { id: number; nome: string; }
+const FrequenciaForm: React.FC = () => {
+  const currentDate = new Date();
+  const currentMonth = currentDate.getMonth() + 1;
+  const currentYear = currentDate.getFullYear();
+  const [periodo, setPeriodo] = useState<string>('Manha');
+  const [turmaId, setTurmaId] = useState<number | ''>('');
+  const [mes, setMes] = useState<number>(currentMonth);
+  const [ano, setAno] = useState<number>(currentYear);
+  const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [alunos, setAlunos] = useState<Aluno[]>([]);
+  const [frequencias, setFrequencias] = useState<FrequenciaData>({});
+  const [diasDesbloqueados, setDiasDesbloqueados] = useState<Set<number>>(new Set());
+  const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const getDataInicio = (): string => new Date(ano, mes - 1, 1).toISOString().split('T')[0];
+  const getDataFim = (): string => new Date(ano, mes, 0).toISOString().split('T')[0];
+  const getDiasDoMes = (): number => new Date(ano, mes, 0).getDate();
+  const getDiaDaSemana = (dia: number): string => {
+    const date = new Date(ano, mes - 1, dia);
+    const dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+    return dias[date.getDay()];
+  };
+  useEffect(() => {
+    const carregarTurmas = async () => {
+      try {
+        const response = await fetch('http://localhost:8080/turmas');
+        const data = await response.json();
+        setTurmas(data);
+      } catch (error) {
+        console.error('Erro:', error);
+      }
+    };
+    carregarTurmas();
+  }, []);
+  useEffect(() => {
+    if (!turmaId) { setAlunos([]); setFrequencias({}); return; }
+    const carregarDados = async () => {
+      try {
+        const resAlunos = await fetch(`http://localhost:8080/alunos?turmaId=${turmaId}`);
+        const dataAlunos = await resAlunos.json();
+        setAlunos(dataAlunos);
+        const freqInicial: FrequenciaData = {};
+        const diasMes = getDiasDoMes();
+        dataAlunos.forEach((aluno: Aluno) => {
+          freqInicial[aluno.id] = {};
+          for (let i = 1; i <= diasMes; i++) { freqInicial[aluno.id][i] = 'C'; }
+        });
+        const dataInicio = getDataInicio();
+        const dataFim = getDataFim();
+        const resFreq = await fetch(`http://localhost:8080/frequencias?turmaId=${turmaId}&dataInicio=${dataInicio}&dataFim=${dataFim}`);
+        const dataFreq: FrequenciaAPI[] = await resFreq.json();
+        dataFreq.forEach((freq: FrequenciaAPI) => {
+          if (freqInicial[freq.alunoId]) { freqInicial[freq.alunoId][freq.dia] = freq.status; }
+        });
+        setFrequencias(freqInicial);
+        setDiasDesbloqueados(new Set());
+      } catch (error) {
+        console.error('Erro:', error);
+      }
+    };
+    carregarDados();
+  }, [turmaId, mes, ano]);
+  const toggleDia = (dia: number) => {
+    const novosDias = new Set(diasDesbloqueados);
+    if (novosDias.has(dia)) { novosDias.delete(dia); } else {
+      novosDias.add(dia);
+      setFrequencias(prev => {
+        const novoFreq = { ...prev };
+        alunos.forEach(aluno => {
+          if (!novoFreq[aluno.id]) { novoFreq[aluno.id] = {}; }
+          if (novoFreq[aluno.id][dia] === undefined) { novoFreq[aluno.id][dia] = 'C'; }
+        });
+        return novoFreq;
+      });
+    }
+    setDiasDesbloqueados(novosDias);
+  };
+  const toggleFrequencia = (alunoId: number, dia: number) => {
+    if (!diasDesbloqueados.has(dia)) return;
+    setFrequencias(prev => ({ ...prev, [alunoId]: { ...prev[alunoId], [dia]: prev[alunoId][dia] === 'C' ? 'F' : 'C', }, }));
+  };
+  const contarFaltas = (alunoId: number): number => Object.values(frequencias[alunoId] || {}).filter(f => f === 'F').length;
+  const diasDoMes = getDiasDoMes();
+  return (
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Typography variant="h4" sx={{ mb: 4, fontWeight: 'bold' }}>Controle de Frequência</Typography>
+      <Paper sx={{ p: 3, mb: 4 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth>
+              <InputLabel>Período</InputLabel>
+              <Select value={periodo} onChange={(e) => setPeriodo(e.target.value as string)} label="Período">
+                <MenuItem value="Manha">Manhã</MenuItem>
+                <MenuItem value="Tarde">Tarde</MenuItem>

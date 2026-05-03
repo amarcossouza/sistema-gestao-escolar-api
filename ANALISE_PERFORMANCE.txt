@@ -1,0 +1,248 @@
+================================================================================
+ANÁLISE DE PERFORMANCE - CARREGAMENTO DE FREQUÊNCIA
+ERP Escolar API - Maio 2026
+================================================================================
+
+1. CAMINHO CRÍTICO DO CARREGAMENTO COMPLETO
+================================================================================
+
+Endpoint: GET /turmas/{id}/dados-completos?mes=5&ano=2026
+
+Fluxo de Execução:
+  1. HTTP Request chega no TurmaController
+  2. Controller dispara TurmaService.obterDadosCompletos(turmaId=1, mes=5, ano=2026)
+  3. Service cria período de datas: 2026-05-01 a 2026-05-31
+  
+  QUERY 1: Buscar alunos da turma
+    Repository: AlunoRepository.findByTurmaId(1)
+    Index: idx_aluno_turma (turma_id)
+    Expected: < 100ms
+    
+  QUERY 2: Buscar frequências do período
+    Repository: FrequenciaRepository.findByTurmaIdAndDataBetween(1, 2026-05-01, 2026-05-31)
+    Index: idx_frequencia_turma_data (turma_id, data)
+    Expected: < 150ms
+    
+  QUERY 3: Buscar chamadas confirmadas do período
+    Repository: ChamadaConfirmadaRepository.findByTurmaIdAndDataChamadaBetween(...)
+    Index: idx_chamada_turma_data (turma_id, data_chamada)
+    Expected: < 100ms
+    
+  QUERY 4: Contar ocorrências agregadas (OTIMIZADO!)
+    Repository: OcorrenciaRepository.countOcorrenciasByTurmaId(1)
+    Type: Custom Query com GROUP BY
+    @Query("SELECT new map(o.alunoId as alunoId, COUNT(o) as count) 
+            FROM Ocorrencia o 
+            WHERE o.turmaId = :turmaId 
+            GROUP BY o.alunoId")
+    Index: idx_ocorrencia_turma_aluno (turma_id, aluno_id)
+    Expected: < 200ms
+    Benefit: Uma query em vez de N queries (N = número de alunos)
+    
+  4. Service monta FrequenciaCompleteResponseDTO
+  5. Controller retorna JSON Response
+
+TEMPO TOTAL ESPERADO: 200-500ms (depende do tamanho da turma)
+
+
+2. PONTOS CRÍTICOS DE PERFORMANCE
+================================================================================
+
+CRÍTICO #1: Índices no Banco de Dados
+  Status: DEVE SER EXECUTADO MANUALMENTE
+  Localização: src/main/resources/indices_performance.sql
+  
+  Índices Necessários:
+    ✓ idx_frequencia_turma_data ON esc_frequencia(turma_id, data)
+    ✓ idx_frequencia_aluno_turma_data ON esc_frequencia(aluno_id, turma_id, data)
+    ✓ idx_chamada_turma_data ON esc_chamada_confirmada(turma_id, data_chamada)
+    ✓ idx_ocorrencia_aluno ON esc_ocorrencia(aluno_id)
+    ✓ idx_ocorrencia_turma_aluno ON esc_ocorrencia(turma_id, aluno_id)
+    ✓ idx_aluno_turma ON esc_aluno(turma_id)
+  
+  Impacto sem Índices:
+    - Frequências: ~10x mais lento (full table scan)
+    - Ocorrências: ~20x mais lento (full table scan + aggregation)
+    - Chamadas: ~5x mais lento (full table scan)
+  
+  RECOMENDAÇÃO: Execute SQL script IMEDIATAMENTE!
+
+
+CRÍTICO #2: OcorrenciaRepository.countOcorrenciasByTurmaId()
+  Implementação: Query customizada com @Query annotation
+  Benefício: Agregação em 1 query (GROUP BY)
+  Alternativa Ruim: Loop N+1 (1 query por aluno)
+  Impacto: Para turma com 30 alunos:
+    - Otimizado: 1 query (~200ms)
+    - Não otimizado: 30 queries (~3-5s)
+  
+  Status: JÁ IMPLEMENTADO ✓
+
+
+CRÍTICO #3: Problema Potencial - Método salvarLote()
+  Localização: FrequenciaService.salvarLote()
+  Problema: Executa loop - cria N queries
+  
+  Para 3 frequências:
+    1. SELECT aluno WHERE id=1
+    2. SELECT turma WHERE id=1
+    3. SELECT frequencia (verifica duplicata)
+    4. INSERT ou UPDATE
+    5. SELECT aluno WHERE id=2
+    6. SELECT turma WHERE id=1 (repetido!)
+    7. SELECT frequencia
+    8. INSERT ou UPDATE
+    ... (repete para cada item)
+  
+  Total: 12 queries para 3 itens (4 por item)
+  Tempo: ~200-400ms
+  
+  RECOMENDAÇÃO: Implementar batch processing do Hibernate
+  Solução:
+    spring.jpa.properties.hibernate.jdbc.batch_size=20
+    spring.jpa.properties.hibernate.jdbc.batch_versioned_data=true
+
+
+CRÍTICO #4: Carregamento de Alunos com FetchType.EAGER
+  Localização: Aluno.java - @ManyToOne(fetch = FetchType.EAGER)
+  Status: BOM - carrega Turma automaticamente
+  Potencial: Lazy loading em N+1 problema se fosse LAZY
+
+
+3. ENDPOINTS PRINCIPAIS
+================================================================================
+
+3.1 CARREGAMENTO COMPLETO (RECOMENDADO)
+  GET /turmas/1/dados-completos?mes=5&ano=2026
+  
+  Retorna: FrequenciaCompleteResponseDTO
+  {
+    "alunos": [...],                     // Lista completa de alunos
+    "frequencias": [...],                // Todas as frequências do mês
+    "ocorrenciasCount": {...},           // Map: alunoId -> count
+    "chamadasConfirmadas": [...]         // Chamadas do período
+  }
+  
+  Performance: 200-500ms (4 queries otimizadas)
+  
+  USADO POR: Frontend para renderizar tabela de frequência do mês
+
+
+3.2 BUSCAR FREQUÊNCIAS POR PERÍODO
+  GET /frequencias?turmaId=1&dataInicio=2026-05-01&dataFim=2026-05-31
+  
+  Retorna: List<Frequencia>
+  Performance: 100-150ms (1 query com índice)
+
+
+3.3 SALVAR FREQUÊNCIA INDIVIDUAL
+  POST /frequencias
+  Body: { "aluno": {"id": 5}, "turma": {"id": 1}, "data": "2026-05-15", "status": "P" }
+  
+  Performance: 50-100ms
+  Queries: 3-5 (valida aluno, turma, verifica duplicata, salva)
+
+
+3.4 SALVAR LOTE (PROBLEMA - COM LOOP)
+  POST /frequencias/salvar-lote
+  Body: [
+    { "alunoId": 1, "turmaId": 1, "data": "2026-05-15", "status": "P" },
+    { "alunoId": 2, "turmaId": 1, "data": "2026-05-15", "status": "F" },
+    ...
+  ]
+  
+  Performance: 200-400ms para 3 itens
+  Problema: Executa loop (4 queries por item)
+  RECOMENDAÇÃO: Implementar batch processing
+
+
+4. TABELAS E ÍNDICES DO BANCO
+================================================================================
+
+Tabela: esc_frequencia
+  Colunas: id, id_aluno, id_turma, data, status, criado_em
+  PK: id
+  FK: id_aluno → esc_aluno(id)
+  FK: id_turma → esc_turma(id)
+  Constraint Única: (id_aluno, id_turma, data)
+  
+  Índices:
+    ✓ idx_frequencia_turma_data (turma_id, data)
+    ✓ idx_frequencia_aluno_turma_data (aluno_id, turma_id, data)
+
+
+Tabela: esc_aluno
+  Colunas: id, nome, id_turma
+  PK: id
+  FK: id_turma → esc_turma(id)
+  
+  Índices:
+    ✓ idx_aluno_turma (turma_id)
+
+
+Tabela: esc_turma
+  Colunas: id, id_escola, nome, periodo, ano_letivo
+  PK: id
+  FK: id_escola → esc_escola(id)
+
+
+Tabela: esc_ocorrencias
+  Colunas: id, aluno_id, turma_id, tipo_ocorrencia_id, data_ocorrencia, hora_ocorrencia, ...
+  PK: id
+  
+  Índices:
+    ✓ idx_ocorrencia_aluno (aluno_id)
+    ✓ idx_ocorrencia_turma_aluno (turma_id, aluno_id)
+
+
+Tabela: esc_chamada_confirmada
+  Colunas: id, turma_id, data_chamada, data_hora_confirmacao, email_professor
+  PK: id
+  Constraint Única: (turma_id, data_chamada)
+  
+  Índices:
+    ✓ idx_chamada_turma_data (turma_id, data_chamada)
+
+
+5. CHECKLIST DE IMPLEMENTAÇÃO
+================================================================================
+
+[ ] 1. EXECUTAR SCRIPT DE ÍNDICES
+    - Arquivo: src/main/resources/indices_performance.sql
+    - Banco: droplexdb no servidor 134.209.164.87
+    - Impacto: +10-20x de performance
+
+[ ] 2. VALIDAR ÍNDICES CRIADOS
+    SHOW INDEX FROM esc_frequencia;
+    SHOW INDEX FROM esc_ocorrencia;
+    SHOW INDEX FROM esc_chamada_confirmada;
+    SHOW INDEX FROM esc_aluno;
+
+[ ] 3. IMPLEMENTAR BATCH PROCESSING EM salvarLote()
+    - Adicionar em application.properties:
+      spring.jpa.properties.hibernate.jdbc.batch_size=20
+      spring.jpa.properties.hibernate.jdbc.fetch_size=50
+    - Refatorar método para usar EntityManager.flush()
+
+[ ] 4. IMPLEMENTAR CACHING
+    - Adicionar @Cacheable em TurmaService.obterDadosCompletos()
+    - Cache de 5 minutos para dados de frequência
+    - Invalidar cache ao salvar frequência
+
+[ ] 5. ADICIONAR PAGINAÇÃO
+    - Implementar Pageable em endpoints de listagem
+    - Limitar tamanho padrão a 100 registros
+
+[ ] 6. MONITORAMENTO DE QUERIES
+    - Habilitar spring.jpa.show-sql=true em desenvolvimento
+    - Usar ferramentas como JProfiler ou YourKit
+    - Monitora consultas lentas (> 100ms)
+
+[ ] 7. TESTES DE CARGA
+    - JMeter: 100 requisições simultâneas a /turmas/{id}/dados-completos
+    - Validar tempo de resposta < 1000ms
+    - Validar uso de memória
+
+
+6. ARQUIVO DE CONFIGURAÇÃO
+==================

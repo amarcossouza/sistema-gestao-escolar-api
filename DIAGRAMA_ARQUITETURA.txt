@@ -1,0 +1,132 @@
+================================================================================
+                    DIAGRAMA DE ARQUITETURA
+                    Frequência - ERP Escolar API
+================================================================================
+
+
+1. VISÃO GERAL DA STACK
+================================================================================
+
+┌─────────────────────────────────────────────────────────────┐
+│                  CLIENTE (Frontend Vite)                    │
+│           http://localhost:5173 ou 5174                     │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ HTTP/REST
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
+│               SPRING BOOT 3.5.11 (Java 17)                  │
+│          http://localhost:8080 (API REST)                   │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │            FrequenciaController                        │ │
+│  │  • GET /frequencias                                    │ │
+│  │  • POST /frequencias                                   │ │
+│  │  • POST /frequencias/salvar-lote                       │ │
+│  └─────────────────────┬──────────────────────────────────┘ │
+│                        │                                     │
+│  ┌─────────────────────↓──────────────────────────────────┐ │
+│  │            TurmaController                             │ │
+│  │  • GET /turmas/{id}/dados-completos (CRÍTICO)          │ │
+│  └─────────────────────┬──────────────────────────────────┘ │
+│                        │                                     │
+│  ┌─────────────────────↓──────────────────────────────────┐ │
+│  │            FrequenciaService                           │ │
+│  │            TurmaService                                │ │
+│  │  • obterDadosCompletos() [4 queries]                   │ │
+│  │  • salvarLote() [loop problem]                         │ │
+│  └─────────────────────┬──────────────────────────────────┘ │
+│                        │                                     │
+│  ┌─────────────────────↓──────────────────────────────────┐ │
+│  │            Repositories (JPA)                          │ │
+│  │  • FrequenciaRepository                                │ │
+│  │  • OcorrenciaRepository (com GROUP BY otimizado)       │ │
+│  │  • AlunoRepository                                     │ │
+│  │  • ChamadaConfirmadaRepository                         │ │
+│  └─────────────────────┬──────────────────────────────────┘ │
+│                        │                                     │
+│  ┌─────────────────────↓──────────────────────────────────┐ │
+│  │            Entity Classes (JPA/Hibernate)              │ │
+│  │  • Frequencia                                          │ │
+│  │  • Aluno                                               │ │
+│  │  • Turma                                               │ │
+│  │  • Ocorrencia                                          │ │
+│  │  • ChamadaConfirmada                                   │ │
+│  └─────────────────────┬──────────────────────────────────┘ │
+│                        │ JDBC                                │
+│                        ↓                                     │
+└─────────────────────────────────────────────────────────────┘
+                        │ TCP/3306
+                        ↓
+┌─────────────────────────────────────────────────────────────┐
+│           MySQL 8.0 (134.209.164.87:3306)                   │
+│              Database: droplexdb                             │
+│                                                              │
+│  Tabelas:                                                    │
+│  • esc_frequencia      [+2 índices]                         │
+│  • esc_aluno           [+1 índice]                          │
+│  • esc_turma                                                │
+│  • esc_ocorrencias     [+2 índices]                         │
+│  • esc_chamada_confirmada [+1 índice]                       │
+│                                                              │
+│  Índices Críticos:                                          │
+│  ✓ idx_frequencia_turma_data                               │
+│  ✓ idx_ocorrencia_turma_aluno                              │
+│  ✓ idx_chamada_turma_data                                  │
+│  ✓ idx_aluno_turma                                         │
+└─────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+2. FLUXO DETALHADO DO CARREGAMENTO COMPLETO
+================================================================================
+
+Endpoint: GET /turmas/1/dados-completos?mes=5&ano=2026
+Resultado: FrequenciaCompleteResponseDTO completo
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 1. HTTP Request chega no TurmaController                                 │
+│    /turmas/1/dados-completos?mes=5&ano=2026                             │
+└────────────────────────────┬─────────────────────────────────────────────┘
+                             │
+                             ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 2. TurmaController.obterDadosCompletos(id=1, mes=5, ano=2026)           │
+│    └─ Calcula datas: 2026-05-01 a 2026-05-31                            │
+└────────────────────────────┬─────────────────────────────────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┬─────────────────┐
+         ↓                   ↓                   ↓                 ↓
+    [Query 1]          [Query 2]          [Query 3]           [Query 4]
+    
+┌─────────────────┐ ┌──────────────────┐ ┌─────────────────┐ ┌──────────────┐
+│ AlunoRepository │ │FrequenciaReposi- │ │ChamadaConfirm   │ │OcorrenciaRep │
+│                 │ │tory              │ │Repository       │ │ository      │
+│                 │ │                  │ │                 │ │              │
+│ SELECT alunos   │ │ SELECT frequen   │ │ SELECT chamadas │ │ SELECT       │
+│ WHERE turma_id  │ │ cias WHERE turma │ │ WHERE turma_id  │ │ COUNT(*)     │
+│ = 1             │ │ _id = 1 AND data │ │ AND data_chamad │ │ FROM ocorren │
+│                 │ │ BETWEEN 2026-05  │ │ a BETWEEN       │ │ cias WHERE   │
+│ Index:          │ │ -01 AND 2026-05  │ │ 2026-05-01 AND  │ │ turma_id = 1 │
+│ idx_aluno_turma │ │ -31              │ │ 2026-05-31      │ │ GROUP BY     │
+│                 │ │                  │ │                 │ │ aluno_id     │
+│ Time: ~100ms    │ │ Index:           │ │ Index:          │ │              │
+│ Result: 30      │ │ idx_frequencia   │ │ idx_chamada     │ │ Index:       │
+│ alunos          │ │ _turma_data      │ │ _turma_data     │ │ idx_ocorren  │
+│                 │ │                  │ │                 │ │ cia_turma_al │
+└────────┬────────┘ │ Time: ~150ms     │ │ Time: ~100ms    │ │ uno          │
+         │          │ Result: 90       │ │ Result: 22      │ │              │
+         │          │ frequências      │ │ chamadas        │ │ Time: ~200ms │
+         │          └────────┬─────────┘ │                 │ │ Result: map  │
+         │                   │           │ Result:         │ │ aluno_id ->  │
+         │                   │           └────────┬────────┘ │ count        │
+         │                   │                    │          │              │
+         └─────────────┬─────┴──────────────┬─────┴─────────┬┘
+                       │                    │               │
+                       ↓                    ↓               ↓
+         ┌──────────────────────────────────────────────────────┐
+         │ 3. Montar FrequenciaCompleteResponseDTO              │
+         │    {                                                 │
+         │      "alunos": [30 alunos],                         │
+         │      "frequencias": [90 registros],                 │
+         │      "ocorrenciasCount": {1->2, 2->0, 3->1, ...},   │
+         │      "chamadasConfirmadas": [22 registros] 
