@@ -8,7 +8,9 @@ import com.escola.api.service.TurmaService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/turmas")
@@ -87,20 +89,44 @@ public class TurmaController {
     }
 
     @GetMapping("/{id}/dados-completos")
-    public ResponseEntity<FrequenciaCompleteResponseDTO> obterDadosCompletos(
+    public ResponseEntity<?> obterDadosCompletos(
             @PathVariable Integer id,
             @RequestParam Integer mes,
             @RequestParam Integer ano
     ) {
         try {
             System.out.println("\n>>> GET /turmas/" + id + "/dados-completos?mes=" + mes + "&ano=" + ano);
+            
+            // Validar parâmetros
+            if (id == null || id <= 0) {
+                System.err.println("❌ ERRO: ID da turma inválido: " + id);
+                return ResponseEntity.badRequest().body("ID da turma inválido");
+            }
+            if (mes == null || mes < 1 || mes > 12) {
+                System.err.println("❌ ERRO: Mês inválido: " + mes);
+                return ResponseEntity.badRequest().body("Mês inválido: " + mes);
+            }
+            if (ano == null || ano < 2020 || ano > 2030) {
+                System.err.println("❌ ERRO: Ano inválido: " + ano);
+                return ResponseEntity.badRequest().body("Ano inválido: " + ano);
+            }
+            
             FrequenciaCompleteResponseDTO dto = turmaService.obterDadosCompletos(id, mes, ano);
             System.out.println("<<< Retornando DTO com sucesso\n");
             return ResponseEntity.ok(dto);
         } catch (Exception e) {
-            System.err.println("❌ ERRO: " + e.getMessage());
+            System.err.println("❌ ERRO DETALHADO: " + e.getClass().getName() + " - " + e.getMessage());
             e.printStackTrace();
-            return ResponseEntity.badRequest().build();
+            
+            // Retornar o erro com mais detalhes
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getClass().getSimpleName());
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("turmaId", id);
+            errorResponse.put("mes", mes);
+            errorResponse.put("ano", ano);
+            
+            return ResponseEntity.status(500).body(errorResponse);
         }
     }
 }
