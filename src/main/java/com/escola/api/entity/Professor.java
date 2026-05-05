@@ -4,36 +4,37 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "esc_usuario")
-public class Usuario {
+@Table(name = "esc_professor")
+public class Professor {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Column(nullable = false)
     private String nome;
 
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
-    private String senha;
+    private String telefone;
 
-    private Boolean ativo;
+    @Column(nullable = false)
+    private String cargo;
+
+    @Column(name = "sigla_materia", length = 5)
+    private String siglaMateria;
+
+    @Column(name = "nome_materia")
+    private String nomeMateria;
+
+    private Boolean ativo = true;
 
     @Column(name = "criado_em")
     private LocalDateTime criadoEm;
 
     @Column(name = "atualizado_em")
     private LocalDateTime atualizadoEm;
-
-    @Column(name = "ultimo_login")
-    private LocalDateTime ultimoLogin;
-
-    @Column(name = "tentativas_login")
-    private Integer tentativasLogin;
-
-    @Column(name = "senha_temporaria")
-    private Boolean senhaTemporaria;
 
     public Integer getId() { return id; }
     public void setId(Integer id) { this.id = id; }
@@ -44,8 +45,17 @@ public class Usuario {
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
 
-    public String getSenha() { return senha; }
-    public void setSenha(String senha) { this.senha = senha; }
+    public String getTelefone() { return telefone; }
+    public void setTelefone(String telefone) { this.telefone = telefone; }
+
+    public String getCargo() { return cargo; }
+    public void setCargo(String cargo) { this.cargo = cargo; }
+
+    public String getSiglaMateria() { return siglaMateria; }
+    public void setSiglaMateria(String siglaMateria) { this.siglaMateria = siglaMateria; }
+
+    public String getNomeMateria() { return nomeMateria; }
+    public void setNomeMateria(String nomeMateria) { this.nomeMateria = nomeMateria; }
 
     public Boolean getAtivo() { return ativo; }
     public void setAtivo(Boolean ativo) { this.ativo = ativo; }
@@ -55,13 +65,4 @@ public class Usuario {
 
     public LocalDateTime getAtualizadoEm() { return atualizadoEm; }
     public void setAtualizadoEm(LocalDateTime atualizadoEm) { this.atualizadoEm = atualizadoEm; }
-
-    public LocalDateTime getUltimoLogin() { return ultimoLogin; }
-    public void setUltimoLogin(LocalDateTime ultimoLogin) { this.ultimoLogin = ultimoLogin; }
-
-    public Integer getTentativasLogin() { return tentativasLogin; }
-    public void setTentativasLogin(Integer tentativasLogin) { this.tentativasLogin = tentativasLogin; }
-
-    public Boolean getSenhaTemporaria() { return senhaTemporaria; }
-    public void setSenhaTemporaria(Boolean senhaTemporaria) { this.senhaTemporaria = senhaTemporaria; }
 }

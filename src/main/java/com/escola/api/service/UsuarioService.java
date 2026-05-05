@@ -1,11 +1,15 @@
 package com.escola.api.service;
 
+import com.escola.api.dto.UsuarioCreateDTO;
+import com.escola.api.dto.UsuarioResponseDTO;
 import com.escola.api.entity.Usuario;
 import com.escola.api.repository.UsuarioRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class UsuarioService {
@@ -13,6 +17,46 @@ public class UsuarioService {
 
     public UsuarioService(UsuarioRepository usuarioRepository) {
         this.usuarioRepository = usuarioRepository;
+    }
+
+    public List<UsuarioResponseDTO> listarUsuarios() {
+        return usuarioRepository.findAll()
+                .stream()
+                .map(UsuarioResponseDTO::from)
+                .collect(Collectors.toList());
+    }
+
+    public Object atualizarUsuario(Integer id, UsuarioCreateDTO dto) {
+        Optional<Usuario> usuarioOpt = usuarioRepository.findById(id);
+        if (usuarioOpt.isEmpty()) {
+            return "Usuário não encontrado";
+        }
+        Usuario usuario = usuarioOpt.get();
+        if (dto.getNome() != null) usuario.setNome(dto.getNome());
+        if (dto.getEmail() != null) usuario.setEmail(dto.getEmail());
+        if (dto.getSenha() != null) usuario.setSenha(dto.getSenha());
+        if (dto.getAtivo() != null) usuario.setAtivo(dto.getAtivo());
+        if (dto.getSenhaTemporaria() != null) usuario.setSenhaTemporaria(dto.getSenhaTemporaria());
+        if (dto.getTentativasLogin() != null) usuario.setTentativasLogin(dto.getTentativasLogin());
+        usuario.setAtualizadoEm(LocalDateTime.now());
+        usuarioRepository.save(usuario);
+        return UsuarioResponseDTO.from(usuario);
+    }
+
+    public String cadastrarUsuario(UsuarioCreateDTO dto) {
+        if (usuarioRepository.findByEmail(dto.getEmail()).isPresent()) {
+            return "Email já cadastrado";
+        }
+        Usuario usuario = new Usuario();
+        usuario.setNome(dto.getNome());
+        usuario.setEmail(dto.getEmail());
+        usuario.setSenha(dto.getSenha());
+        usuario.setAtivo(dto.getAtivo() != null ? dto.getAtivo() : true);
+        usuario.setTentativasLogin(dto.getTentativasLogin() != null ? dto.getTentativasLogin() : 0);
+        usuario.setSenhaTemporaria(dto.getSenhaTemporaria() != null ? dto.getSenhaTemporaria() : false);
+        usuario.setCriadoEm(LocalDateTime.now());
+        usuarioRepository.save(usuario);
+        return "Usuário cadastrado com sucesso";
     }
 
     public String login(String email, String senha) {

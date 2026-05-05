@@ -41,24 +41,13 @@ public class FrequenciaController {
     }
 
     @PostMapping
-    public ResponseEntity<?> salvar(@RequestBody Frequencia frequencia) {
+    public ResponseEntity<?> salvar(@RequestBody FrequenciaRequest request) {
         try {
-            System.out.println("\n>>> POST /frequencias");
-            System.out.println("Body: " + frequencia);
-            System.out.println("Aluno: " + (frequencia.getAluno() != null ? frequencia.getAluno().getId() : "null"));
-            System.out.println("Turma: " + (frequencia.getTurma() != null ? frequencia.getTurma().getId() : "null"));
-            System.out.println("Data: " + frequencia.getData());
-            System.out.println("Status: " + frequencia.getStatus());
-            
-            Frequencia salva = frequenciaService.salvar(frequencia);
-            System.out.println("<<< Frequência salva com sucesso: " + salva.getId() + "\n");
+            Frequencia salva = frequenciaService.salvar(request);
             return ResponseEntity.ok(salva);
         } catch (IllegalArgumentException e) {
-            System.err.println("❌ ERRO (validação): " + e.getMessage());
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (Exception e) {
-            System.err.println("❌ ERRO: " + e.getMessage());
-            e.printStackTrace();
             return ResponseEntity.internalServerError().body("Erro ao salvar frequência: " + e.getMessage());
         }
     }

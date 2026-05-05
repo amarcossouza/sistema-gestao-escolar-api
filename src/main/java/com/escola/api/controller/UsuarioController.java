@@ -2,9 +2,12 @@ package com.escola.api.controller;
 
 import com.escola.api.dto.LoginRequest;
 import com.escola.api.dto.TrocarSenhaRequest;
+import com.escola.api.dto.UsuarioCreateDTO;
+import com.escola.api.dto.UsuarioResponseDTO;
 import com.escola.api.service.UsuarioService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -13,6 +16,30 @@ public class UsuarioController {
 
     public UsuarioController(UsuarioService usuarioService) {
         this.usuarioService = usuarioService;
+    }
+
+    @GetMapping("/usuarios")
+    public ResponseEntity<List<UsuarioResponseDTO>> listarUsuarios() {
+        return ResponseEntity.ok(usuarioService.listarUsuarios());
+    }
+
+    @PostMapping("/usuarios")
+    public ResponseEntity<String> cadastrarUsuario(@RequestBody UsuarioCreateDTO dto) {
+        String result = usuarioService.cadastrarUsuario(dto);
+        if ("Usuário cadastrado com sucesso".equals(result)) {
+            return ResponseEntity.status(201).body(result);
+        } else {
+            return ResponseEntity.status(409).body(result);
+        }
+    }
+
+    @PutMapping("/usuarios/{id}")
+    public ResponseEntity<?> atualizarUsuario(@PathVariable Integer id, @RequestBody UsuarioCreateDTO dto) {
+        Object result = usuarioService.atualizarUsuario(id, dto);
+        if (result instanceof String) {
+            return ResponseEntity.status(404).body(result);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/login")

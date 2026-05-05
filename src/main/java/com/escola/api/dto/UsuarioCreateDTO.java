@@ -5,6 +5,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "DTO para cadastro de novo usuário")
 public class UsuarioCreateDTO {
 
+    @Schema(description = "Nome do usuário", example = "João Silva")
+    private String nome;
+
     @Schema(description = "Email do usuário", example = "admin@admin.com.br")
     private String email;
 
@@ -19,6 +22,14 @@ public class UsuarioCreateDTO {
 
     @Schema(description = "Senha temporária", example = "false")
     private Boolean senhaTemporaria;
+
+    public String getNome() {
+        return nome;
+    }
+
+    public void setNome(String nome) {
+        this.nome = nome;
+    }
 
     public String getEmail() {
         return email;

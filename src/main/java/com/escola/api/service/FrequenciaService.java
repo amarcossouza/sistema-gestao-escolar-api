@@ -1,3 +1,4 @@
+// ...existing code...
 package com.escola.api.service;
 
 import com.escola.api.dto.FrequenciaRequest;
@@ -75,6 +76,25 @@ public class FrequenciaService {
             e.printStackTrace();
             throw new RuntimeException("Erro ao salvar frequência: " + e.getMessage(), e);
         }
+    }
+
+    public Frequencia salvar(FrequenciaRequest request) {
+        if (request.getAlunoId() == null) {
+            throw new IllegalArgumentException("Aluno é obrigatório");
+        }
+        if (request.getTurmaId() == null) {
+            throw new IllegalArgumentException("Turma é obrigatória");
+        }
+        Aluno aluno = alunoRepository.findById(request.getAlunoId())
+                .orElseThrow(() -> new IllegalArgumentException("Aluno não encontrado: " + request.getAlunoId()));
+        Turma turma = turmaRepository.findById(request.getTurmaId())
+                .orElseThrow(() -> new IllegalArgumentException("Turma não encontrada: " + request.getTurmaId()));
+        Frequencia frequencia = new Frequencia();
+        frequencia.setAluno(aluno);
+        frequencia.setTurma(turma);
+        frequencia.setData(request.getData());
+        frequencia.setStatus(request.getStatus());
+        return salvar(frequencia);
     }
 
     public void deletar(Integer id) {
