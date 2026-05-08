@@ -43,11 +43,12 @@ public class FrequenciaPdfService {
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             PdfWriter writer = new PdfWriter(baos);
+            // Usa A4 paisagem
             PdfDocument pdfDoc = new PdfDocument(writer);
-            Document doc = new Document(pdfDoc, new com.itextpdf.kernel.geom.PageSize(210, 297));
+            Document doc = new Document(pdfDoc, com.itextpdf.kernel.geom.PageSize.A4.rotate());
 
-            // Margens MUITO PEQUENAS para máximo aproveitamento
-            doc.setMargins(5, 5, 5, 5);
+            // Margens pequenas para máximo aproveitamento
+            doc.setMargins(10, 5, 10, 5);
 
             // ===== CABEÇALHO COMPACTO =====
             Paragraph titulo = new Paragraph(NOME_ESCOLA)
@@ -57,59 +58,75 @@ public class FrequenciaPdfService {
                     .setMarginBottom(1);
             doc.add(titulo);
 
-            Paragraph periodo = new Paragraph(String.format(
-                    "Frequência - %s/%d | Turma: %s",
-                    String.format("%02d", mes), ano, nomeTurma))
+                // Cabeçalho com mês/ano e turma em negrito
+                String mesAno = String.format("%02d/%d", mes, ano);
+                String turmaStr = nomeTurma != null ? nomeTurma : "";
+                Paragraph periodo = new Paragraph()
+                    .add("Frequência - ")
+                    .add(new com.itextpdf.layout.element.Text(mesAno).setBold())
+                    .add(" | Turma: ")
+                    .add(new com.itextpdf.layout.element.Text(turmaStr).setBold())
                     .setFontSize(8)
                     .setTextAlignment(TextAlignment.CENTER)
                     .setMarginBottom(3);
-            doc.add(periodo);
+                doc.add(periodo);
 
             // ===== TABELA - UMA PÁGINA SÓ =====
             int diasNoMes = obterDiasNoMes(ano, mes);
-            int numColunas = 3 + diasNoMes; // Nº, Nome, Faltas + dias
-
-            Table tabela = new Table(numColunas);
-            tabela.setWidth(com.itextpdf.layout.properties.UnitValue.createPercentValue(100));
+            int totalColunas = 3 + diasNoMes;
+            float larguraTotal = 100f;
+            float larguraNum = 3.5f; // Nº
+            float larguraFaltas = 4.5f; // Faltas
+            float larguraAluno = 38f; // ALUNO (prioridade visual)
+            float larguraDias = (larguraTotal - (larguraNum + larguraFaltas + larguraAluno)) / diasNoMes;
+            float[] larguras = new float[totalColunas];
+            larguras[0] = larguraNum;
+            larguras[1] = larguraAluno;
+            larguras[2] = larguraFaltas;
+            for (int i = 3; i < totalColunas; i++) {
+                larguras[i] = larguraDias;
+            }
+            Table tabela = new Table(com.itextpdf.layout.properties.UnitValue.createPercentArray(larguras)).useAllAvailableWidth();
 
             // CABEÇALHO: Números dos dias
-            adicionarCelulaCompacta(tabela, "Nº", true, 10);
-            adicionarCelulaCompacta(tabela, "ALUNO", true, 60);
-            adicionarCelulaCompacta(tabela, "F", true, 10);
-
+            adicionarCelulaPadronizada(tabela, "Nº", true);
+            adicionarCelulaPadronizada(tabela, "ALUNO", true);
+            adicionarCelulaPadronizada(tabela, "Faltas", true);
             for (int dia = 1; dia <= diasNoMes; dia++) {
-                adicionarCelulaCompacta(tabela, String.valueOf(dia), true, 4);
+                adicionarCelulaPadronizada(tabela, String.valueOf(dia), true);
             }
 
             // CABEÇALHO: Dias da semana
-            adicionarCelulaCompacta(tabela, "", false, 10);
-            adicionarCelulaCompacta(tabela, "", false, 60);
-            adicionarCelulaCompacta(tabela, "", false, 10);
-
+            adicionarCelulaPadronizada(tabela, "", false);
+            adicionarCelulaPadronizada(tabela, "", false);
+            adicionarCelulaPadronizada(tabela, "", false);
             for (int dia = 1; dia <= diasNoMes; dia++) {
                 String diaSemana = obterDiaSemana(dia, ano, mes);
-                adicionarCelulaCompacta(tabela, diaSemana, false, 4);
+                adicionarCelulaPadronizada(tabela, diaSemana, false);
             }
 
             // DADOS DOS ALUNOS
             if (dadosCompletos.getAlunos() != null && !dadosCompletos.getAlunos().isEmpty()) {
                 for (Aluno aluno : dadosCompletos.getAlunos()) {
-                    // ID do aluno
-                    adicionarCelulaCompacta(tabela, String.valueOf(aluno.getId()), false, 10);
-
-                    // Nome (truncado)
-                    String nome = aluno.getNome().length() > 20 ? 
-                        aluno.getNome().substring(0, 20) : aluno.getNome();
-                    adicionarCelulaCompacta(tabela, nome, false, 60);
-
-                    // Total de faltas
+                    adicionarCelulaPadronizada(tabela, String.valueOf(aluno.getId()), false);
+                    adicionarCelulaPadronizada(tabela, aluno.getNome(), false);
                     int faltas = contarFaltas(dadosCompletos, aluno.getId());
-                    adicionarCelulaCompacta(tabela, String.valueOf(faltas), false, 10);
-
-                    // Frequência dos dias
+                    // Se faltas > 0, negrito; se zero, normal
+                    adicionarCelulaPadronizada(tabela, String.valueOf(faltas), faltas > 0);
+                    LocalDate hoje = LocalDate.now();
+                    boolean ehMesAtual = (ano == hoje.getYear() && mes == hoje.getMonthValue());
                     for (int dia = 1; dia <= diasNoMes; dia++) {
-                        String status = obterStatusFrequencia(dadosCompletos, aluno.getId(), dia, ano, mes);
-                        adicionarCelulaCompacta(tabela, status, false, 4);
+                        LocalDate data = LocalDate.of(ano, mes, dia);
+                        // Se sábado ou domingo, imprime célula vazia
+                        if (data.getDayOfWeek().getValue() == 6 || data.getDayOfWeek().getValue() == 7) {
+                            adicionarCelulaPadronizada(tabela, "", false);
+                        } else if (ehMesAtual && data.isAfter(hoje)) {
+                            // Se mês atual e dia futuro, imprime célula vazia
+                            adicionarCelulaPadronizada(tabela, "", false);
+                        } else {
+                            String status = obterStatusFrequencia(dadosCompletos, aluno.getId(), dia, ano, mes);
+                            adicionarCelulaPadronizada(tabela, status, false);
+                        }
                     }
                 }
             }
@@ -134,30 +151,27 @@ public class FrequenciaPdfService {
     /**
      * Adiciona célula COMPACTA - 8pt cabeçalho, 7pt dados
      */
-    private void adicionarCelulaCompacta(Table tabela, String conteudo, boolean ehCabecalho, float widthPercent) {
+    /**
+     * Adiciona célula padronizada: mesma fonte, tamanho, alinhamento, altura uniforme.
+     */
+    private void adicionarCelulaPadronizada(Table tabela, String conteudo, boolean ehCabecalho) {
         Cell celula = new Cell();
-
-        Paragraph para = new Paragraph(conteudo)
-                .setFontSize(6)
-                .setTextAlignment(TextAlignment.CENTER)
-                .setMargin(0);
-
-        if (ehCabecalho) {
+        String texto = conteudo == null ? "" : conteudo;
+        Paragraph para = new Paragraph(texto)
+            .setFontSize(7)
+            .setTextAlignment(TextAlignment.CENTER)
+            .setVerticalAlignment(VerticalAlignment.MIDDLE)
+            .setMargin(0)
+            .setMultipliedLeading(1f);
+        if (ehCabecalho || "F".equals(texto)) {
             para.setBold();
         }
-
-        if ("F".equals(conteudo)) {
-            para.setBold();
-        }
-
         celula.add(para);
-        celula.setPadding(0.5f);
+        celula.setPadding(1.2f);
         celula.setMargin(0);
         celula.setVerticalAlignment(VerticalAlignment.MIDDLE);
-        celula.setBorder(new SolidBorder(ColorConstants.BLACK, 0.2f)); // Linha muito fina
-        celula.setWidth(com.itextpdf.layout.properties.UnitValue.createPercentValue(widthPercent));
+        celula.setBorder(new SolidBorder(ColorConstants.BLACK, 0.18f));
         celula.setBackgroundColor(ColorConstants.WHITE);
-
         tabela.addCell(celula);
     }
 
